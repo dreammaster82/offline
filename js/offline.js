@@ -161,70 +161,85 @@
   };
 
   checkXHR = function(xhr, onUp, onDown) {
-    var _onerror, _onload, _onreadystatechange, _ontimeout, checkStatus;
-    checkStatus = function() {
-      if (xhr.status && xhr.status < 12000) {
-        return onUp();
-      } else {
-        return onDown();
-      }
-    };
-    if (xhr.onprogress === null) {
-      _onerror = xhr.onerror;
-      xhr.onerror = function() {
-        onDown();
-        return typeof _onerror === "function" ? _onerror.apply(null, arguments) : void 0;
-      };
-      _ontimeout = xhr.ontimeout;
-      xhr.ontimeout = function() {
-        onDown();
-        return typeof _ontimeout === "function" ? _ontimeout.apply(null, arguments) : void 0;
-      };
-      _onload = xhr.onload;
-      return xhr.onload = function() {
-        checkStatus();
-        return typeof _onload === "function" ? _onload.apply(null, arguments) : void 0;
-      };
-    } else {
-      _onreadystatechange = xhr.onreadystatechange;
-      return xhr.onreadystatechange = function() {
-        if (xhr.readyState === 4) {
-          checkStatus();
-        } else if (xhr.readyState === 0) {
-          onDown();
+    return new Promise((r, rj) => {
+        var _onerror, _onload, _onreadystatechange, _ontimeout, checkStatus;
+        checkStatus = function() {
+            if (xhr.status && xhr.status < 400) {
+                onUp();
+                return true;
+            } else {
+                onDown();
+                return false;
+            }
+        };
+        if (xhr.onprogress === null) {
+            _onerror = xhr.onerror;
+            xhr.onerror = function() {
+                onDown();
+                if (typeof _onerror === "function") _onerror.apply(null, arguments);
+                rj();
+            };
+            _ontimeout = xhr.ontimeout;
+            xhr.ontimeout = function() {
+                onDown();
+                if (typeof _ontimeout === "function") _ontimeout.apply(null, arguments);
+                rj();
+            };
+            _onload = xhr.onload;
+            xhr.onload = function() {
+                var check = checkStatus();
+                if (typeof _onload === "function") _onload.apply(null, arguments);
+                check ? r() : rj();
+            };
+        } else {
+            _onreadystatechange = xhr.onreadystatechange;
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState === 4) {
+                    checkStatus() ? r() : rj();
+                } else if (xhr.readyState === 0) {
+                    onDown();
+                    rj();
+                }
+                if (typeof _onreadystatechange === "function") _onreadystatechange.apply(null, arguments);
+            };
         }
-        return typeof _onreadystatechange === "function" ? _onreadystatechange.apply(null, arguments) : void 0;
-      };
-    }
+    });
   };
 
   Offline.checks = {};
 
   Offline.checks.xhr = function() {
-    var e, xhr;
+    var e, xhr, promise;
     xhr = new XMLHttpRequest;
     xhr.offline = false;
     xhr.open(Offline.getOption('checks.xhr.type'), Offline.getOption('checks.xhr.url'), true);
     if (xhr.timeout != null) {
       xhr.timeout = Offline.getOption('checks.xhr.timeout');
     }
-    checkXHR(xhr, Offline.markUp, Offline.markDown);
+    promise = checkXHR(xhr, Offline.markUp, Offline.markDown);
     try {
       xhr.send();
     } catch (_error) {
       e = _error;
       Offline.markDown();
     }
-    return xhr;
+    return promise;
   };
 
   Offline.checks.image = function() {
-    var img;
-    img = document.createElement('img');
-    img.onerror = Offline.markDown;
-    img.onload = Offline.markUp;
-    img.src = Offline.getOption('checks.image.url');
-    return void 0;
+    return new Promise((r, rj) => {
+        var img;
+        img = document.createElement('img');
+        img.onerror = () => {
+          Offline.markDown();
+          rj();
+        };
+        img.onload = () => {
+          Offline.markUp();
+          r();
+        };
+        img.src = Offline.getOption('checks.image.url');
+    });
   };
 
   Offline.checks.down = Offline.markDown;
